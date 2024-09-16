@@ -1,0 +1,9 @@
+[package]
+name = "secret_mem"
+version = "0.1.0"
+authors = ["Giuseppe Eletto <giuseppe@eletto.me>"]
+edition = "2021"
+
+[dependencies]
+libc = "0.2"
+zeroize = "1.8"
