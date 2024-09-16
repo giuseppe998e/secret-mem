@@ -178,39 +178,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_unix_secret_memory_mut_allocation() {
-        let secret_mem = UnixSecretMemoryMut::with_length(1024).expect("Failed to allocate memory");
-        assert_eq!(secret_mem.as_ref().len(), 1024);
-    }
-
-    #[test]
-    fn test_unix_secret_memory_mut_write_and_read() {
+    fn test_unix_secret_memory_mut() {
         let mut secret_mem =
             UnixSecretMemoryMut::with_length(1024).expect("Failed to allocate memory");
+
         let data = secret_mem.as_mut();
         data[0] = 42;
+
+        assert_eq!(secret_mem.as_ref().len(), 1024);
         assert_eq!(secret_mem.as_ref()[0], 42);
     }
 
     #[test]
-    fn test_unix_secret_memory_conversion() {
-        let secret_mem_mut =
-            UnixSecretMemoryMut::with_length(1024).expect("Failed to allocate memory");
-        let secret_mem_read_only = UnixSecretMemory::try_from(secret_mem_mut)
-            .expect("Failed to convert to read-only memory");
-        assert_eq!(secret_mem_read_only.as_ref().len(), 1024);
-    }
-
-    #[test]
-    fn test_unix_secret_memory_read_only_protection() {
+    fn test_unix_secret_memory_readonly() {
         let mut secret_mem_mut =
             UnixSecretMemoryMut::with_length(1024).expect("Failed to allocate memory");
+
         let data = secret_mem_mut.as_mut();
         data[0] = 42;
 
         let secret_mem_read_only = UnixSecretMemory::try_from(secret_mem_mut)
             .expect("Failed to convert to read-only memory");
-        let data = secret_mem_read_only.as_ref();
-        assert_eq!(data[0], 42);
+        assert_eq!(secret_mem_read_only.as_ref().len(), 1024);
+        assert_eq!(secret_mem_read_only.as_ref()[0], 42);
     }
 }
