@@ -78,10 +78,8 @@ impl AsMut<[u8]> for LinuxSecretMemoryMut {
 impl Drop for LinuxSecretMemoryMut {
     fn drop(&mut self) {
         let slice_ptr = ptr::slice_from_raw_parts_mut(self.mmap.as_ptr(), self.len);
-        unsafe {
-            Zeroize::zeroize(&mut (*slice_ptr));
-            libc::munmap(self.mmap.as_ptr() as *mut _, self.len);
-        }
+        Zeroize::zeroize(unsafe { &mut (*slice_ptr) });
+        unsafe { libc::munmap(self.mmap.as_ptr() as *mut _, self.len) };
     }
 }
 
@@ -126,12 +124,10 @@ impl TryFrom<LinuxSecretMemoryMut> for LinuxSecretMemory {
 
 impl Drop for LinuxSecretMemory {
     fn drop(&mut self) {
+        unsafe { libc::mprotect(self.mmap.as_ptr() as *mut _, self.len, PROT_WRITE) };
         let slice_ptr = ptr::slice_from_raw_parts_mut(self.mmap.as_ptr(), self.len);
-        unsafe {
-            libc::mprotect(self.mmap.as_ptr() as *mut _, self.len, PROT_WRITE);
-            Zeroize::zeroize(&mut (*slice_ptr));
-            libc::munmap(self.mmap.as_ptr() as *mut _, self.len);
-        }
+        Zeroize::zeroize(unsafe { &mut (*slice_ptr) });
+        unsafe { libc::munmap(self.mmap.as_ptr() as *mut _, self.len) };
     }
 }
 
