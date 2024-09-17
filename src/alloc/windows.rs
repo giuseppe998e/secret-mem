@@ -28,6 +28,13 @@ impl SecretMemoryMut for WindowsSecretMemoryMut {
     type ReadOnly = WindowsSecretMemory;
 
     fn with_length(len: usize) -> io::Result<Self> {
+        if !(len > 0 && len <= isize::MAX as usize) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "length out of bounds",
+            ));
+        }
+
         let virt_alloc = unsafe {
             VirtualAlloc(
                 ptr::null_mut(),

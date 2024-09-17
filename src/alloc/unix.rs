@@ -25,7 +25,12 @@ impl SecretMemoryMut for UnixSecretMemoryMut {
     type ReadOnly = UnixSecretMemory;
 
     fn with_length(len: usize) -> std::io::Result<Self> {
-        assert!(len <= libc::off_t::MAX as usize, "Length out of bounds!");
+        if !(len > 0 && len <= isize::MAX as usize) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "length out of bounds",
+            ));
+        }
 
         let mmap = unsafe {
             libc::mmap(
