@@ -5,22 +5,6 @@ pub mod unix;
 #[cfg(target_family = "windows")]
 pub mod windows;
 
-/// Trait representing secret memory that allows read-only access.
-///
-/// Implementors of this trait should ensure that the memory is secured
-/// and not accessible by unauthorized processes or memory dumps.
-pub trait SecretMemory: AsRef<[u8]> {
-    /// Provides a byte slice view of the secret memory.
-    /// This function is a convenience wrapper around the `AsRef` implementation.
-    ///
-    /// # Returns
-    /// A byte slice (`&[u8]`) representing the contents of the secret memory.
-    #[inline]
-    fn as_bytes(&self) -> &[u8] {
-        self.as_ref()
-    }
-}
-
 /// Trait representing secret memory that allows mutable access.
 ///
 /// Memory allocated via this trait can later be converted into
@@ -59,5 +43,21 @@ pub trait SecretMemoryMut: AsMut<[u8]> + SecretMemory + Sized {
     #[inline]
     fn as_bytes_mut(&mut self) -> &mut [u8] {
         self.as_mut()
+    }
+}
+
+/// Trait representing secret memory that allows read-only access.
+///
+/// Implementors of this trait should ensure that the memory is secured
+/// and not accessible by unauthorized processes or memory dumps.
+pub trait SecretMemory: AsRef<[u8]> {
+    /// Provides a byte slice view of the secret memory.
+    /// This function is a convenience wrapper around the `AsRef` implementation.
+    ///
+    /// # Returns
+    /// A byte slice (`&[u8]`) representing the contents of the secret memory.
+    #[inline]
+    fn as_bytes(&self) -> &[u8] {
+        self.as_ref()
     }
 }

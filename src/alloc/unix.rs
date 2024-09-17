@@ -4,7 +4,7 @@ use core::{
 };
 use std::io;
 
-use libc::{MAP_FAILED, MAP_PRIVATE, PROT_READ, PROT_WRITE};
+use libc::{MAP_ANON, MAP_FAILED, MAP_PRIVATE, PROT_READ, PROT_WRITE};
 use zeroize::Zeroize;
 
 use super::{SecretMemory, SecretMemoryMut};
@@ -27,23 +27,12 @@ impl SecretMemoryMut for UnixSecretMemoryMut {
     fn with_length(len: usize) -> std::io::Result<Self> {
         assert!(len <= libc::off_t::MAX as usize, "Length out of bounds!");
 
-        const MAP_ANONYMOUS: i32 = {
-            #[cfg(target_os = "macos")]
-            {
-                libc::MAP_ANON
-            }
-            #[cfg(not(target_os = "macos"))]
-            {
-                libc::MAP_ANONYMOUS
-            }
-        };
-
         let mmap = unsafe {
             libc::mmap(
                 ptr::null_mut(),
                 len,
                 PROT_WRITE | PROT_READ,
-                MAP_PRIVATE | MAP_ANONYMOUS,
+                MAP_PRIVATE | MAP_ANON,
                 -1,
                 0,
             )
