@@ -1,5 +1,6 @@
 use core::{
     mem::ManuallyDrop,
+    num::NonZeroUsize,
     ptr::{self, NonNull},
 };
 use std::io;
@@ -16,7 +17,7 @@ use super::{SecretMemory, SecretMemoryMut};
 /// version for additional protection when modifications are no longer necessary.
 pub struct LinuxSecretMemoryMut {
     mmap: NonNull<u8>,
-    len: usize,
+    len: NonZeroUsize,
 }
 
 impl SecretMemory for LinuxSecretMemoryMut {}
@@ -60,6 +61,7 @@ impl SecretMemoryMut for LinuxSecretMemoryMut {
             MAP_FAILED => Err(io::Error::last_os_error()),
             ptr => {
                 let mmap = unsafe { NonNull::new_unchecked(ptr as *mut _) };
+                let len = unsafe { NonZeroUsize::new_unchecked(len) };
                 Ok(Self { mmap, len })
             }
         }
@@ -68,23 +70,23 @@ impl SecretMemoryMut for LinuxSecretMemoryMut {
 
 impl AsRef<[u8]> for LinuxSecretMemoryMut {
     fn as_ref(&self) -> &[u8] {
-        let slice_ptr = ptr::slice_from_raw_parts(self.mmap.as_ptr(), self.len);
+        let slice_ptr = ptr::slice_from_raw_parts(self.mmap.as_ptr(), self.len.get());
         unsafe { &(*slice_ptr) }
     }
 }
 
 impl AsMut<[u8]> for LinuxSecretMemoryMut {
     fn as_mut(&mut self) -> &mut [u8] {
-        let slice_ptr = ptr::slice_from_raw_parts_mut(self.mmap.as_ptr(), self.len);
+        let slice_ptr = ptr::slice_from_raw_parts_mut(self.mmap.as_ptr(), self.len.get());
         unsafe { &mut (*slice_ptr) }
     }
 }
 
 impl Drop for LinuxSecretMemoryMut {
     fn drop(&mut self) {
-        let slice_ptr = ptr::slice_from_raw_parts_mut(self.mmap.as_ptr(), self.len);
+        let slice_ptr = ptr::slice_from_raw_parts_mut(self.mmap.as_ptr(), self.len.get());
         Zeroize::zeroize(unsafe { &mut (*slice_ptr) });
-        unsafe { libc::munmap(self.mmap.as_ptr() as *mut _, self.len) };
+        unsafe { libc::munmap(self.mmap.as_ptr() as *mut _, self.len.get()) };
     }
 }
 
@@ -94,14 +96,14 @@ impl Drop for LinuxSecretMemoryMut {
 /// Once converted from a mutable version, it allows only read access.
 pub struct LinuxSecretMemory {
     mmap: NonNull<u8>,
-    len: usize,
+    len: NonZeroUsize,
 }
 
 impl SecretMemory for LinuxSecretMemory {}
 
 impl AsRef<[u8]> for LinuxSecretMemory {
     fn as_ref(&self) -> &[u8] {
-        let slice_ptr = ptr::slice_from_raw_parts(self.mmap.as_ptr(), self.len);
+        let slice_ptr = ptr::slice_from_raw_parts(self.mmap.as_ptr(), self.len.get());
         unsafe { &(*slice_ptr) }
     }
 }
@@ -118,7 +120,7 @@ impl TryFrom<LinuxSecretMemoryMut> for LinuxSecretMemory {
             }
         };
 
-        if unsafe { libc::mprotect(this.mmap.as_ptr() as *mut _, this.len, PROT_READ) } < 0 {
+        if unsafe { libc::mprotect(this.mmap.as_ptr() as *mut _, this.len.get(), PROT_READ) } < 0 {
             // Calls the ‘this’ destructor, freeing the mmap
             return Err(io::Error::last_os_error());
         }
@@ -129,10 +131,10 @@ impl TryFrom<LinuxSecretMemoryMut> for LinuxSecretMemory {
 
 impl Drop for LinuxSecretMemory {
     fn drop(&mut self) {
-        unsafe { libc::mprotect(self.mmap.as_ptr() as *mut _, self.len, PROT_WRITE) };
-        let slice_ptr = ptr::slice_from_raw_parts_mut(self.mmap.as_ptr(), self.len);
+        unsafe { libc::mprotect(self.mmap.as_ptr() as *mut _, self.len.get(), PROT_WRITE) };
+        let slice_ptr = ptr::slice_from_raw_parts_mut(self.mmap.as_ptr(), self.len.get());
         Zeroize::zeroize(unsafe { &mut (*slice_ptr) });
-        unsafe { libc::munmap(self.mmap.as_ptr() as *mut _, self.len) };
+        unsafe { libc::munmap(self.mmap.as_ptr() as *mut _, self.len.get()) };
     }
 }
 

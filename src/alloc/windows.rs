@@ -1,5 +1,6 @@
 use core::{
     mem::ManuallyDrop,
+    num::NonZeroUsize,
     ptr::{self, NonNull},
 };
 use std::io;
@@ -19,7 +20,7 @@ use super::{SecretMemory, SecretMemoryMut};
 /// version for additional protection when modifications are no longer necessary.
 pub struct WindowsSecretMemoryMut {
     virt_alloc: NonNull<u8>,
-    len: usize,
+    len: NonZeroUsize,
 }
 
 impl SecretMemory for WindowsSecretMemoryMut {}
@@ -54,31 +55,32 @@ impl SecretMemoryMut for WindowsSecretMemoryMut {
         }
 
         let virt_alloc = unsafe { NonNull::new_unchecked(virt_alloc as *mut _) };
+        let len = unsafe { NonZeroUsize::new_unchecked(len) };
         Ok(Self { virt_alloc, len })
     }
 }
 
 impl AsRef<[u8]> for WindowsSecretMemoryMut {
     fn as_ref(&self) -> &[u8] {
-        let slice_ptr = ptr::slice_from_raw_parts(self.virt_alloc.as_ptr(), self.len);
+        let slice_ptr = ptr::slice_from_raw_parts(self.virt_alloc.as_ptr(), self.len.get());
         unsafe { &(*slice_ptr) }
     }
 }
 
 impl AsMut<[u8]> for WindowsSecretMemoryMut {
     fn as_mut(&mut self) -> &mut [u8] {
-        let slice_ptr = ptr::slice_from_raw_parts_mut(self.virt_alloc.as_ptr(), self.len);
+        let slice_ptr = ptr::slice_from_raw_parts_mut(self.virt_alloc.as_ptr(), self.len.get());
         unsafe { &mut (*slice_ptr) }
     }
 }
 
 impl Drop for WindowsSecretMemoryMut {
     fn drop(&mut self) {
-        let mem_slice = ptr::slice_from_raw_parts_mut(self.virt_alloc.as_ptr(), self.len);
+        let mem_slice = ptr::slice_from_raw_parts_mut(self.virt_alloc.as_ptr(), self.len.get());
         Zeroize::zeroize(unsafe { &mut (*mem_slice) });
 
         unsafe {
-            VirtualUnlock(self.virt_alloc.as_ptr() as *mut _, self.len);
+            VirtualUnlock(self.virt_alloc.as_ptr() as *mut _, self.len.get());
             VirtualFree(self.virt_alloc.as_ptr() as *mut _, 0, MEM_RELEASE);
         }
     }
@@ -90,14 +92,14 @@ impl Drop for WindowsSecretMemoryMut {
 /// Once converted from a mutable version, it allows only read access.
 pub struct WindowsSecretMemory {
     virt_alloc: NonNull<u8>,
-    len: usize,
+    len: NonZeroUsize,
 }
 
 impl SecretMemory for WindowsSecretMemory {}
 
 impl AsRef<[u8]> for WindowsSecretMemory {
     fn as_ref(&self) -> &[u8] {
-        let slice_ptr = ptr::slice_from_raw_parts(self.virt_alloc.as_ptr(), self.len);
+        let slice_ptr = ptr::slice_from_raw_parts(self.virt_alloc.as_ptr(), self.len.get());
         unsafe { &(*slice_ptr) }
     }
 }
@@ -110,7 +112,7 @@ impl TryFrom<WindowsSecretMemoryMut> for WindowsSecretMemory {
             let manually_drop_value = ManuallyDrop::new(value);
             Self {
                 virt_alloc: manually_drop_value.virt_alloc,
-                len: manually_drop_value.len,
+                len: manually_drop_value.len.get(),
             }
         };
 
@@ -118,7 +120,7 @@ impl TryFrom<WindowsSecretMemoryMut> for WindowsSecretMemory {
         let prot_result = unsafe {
             VirtualProtect(
                 this.virt_alloc.as_ptr() as *mut _,
-                this.len,
+                this.len.get(),
                 PAGE_READONLY,
                 &mut _old_flags as *mut _,
             )
@@ -138,17 +140,17 @@ impl Drop for WindowsSecretMemory {
         unsafe {
             VirtualProtect(
                 self.virt_alloc.as_ptr() as *mut _,
-                self.len,
+                self.len.get(),
                 PAGE_READWRITE,
                 &mut _old_flags as *mut _,
             )
         };
 
-        let mem_slice = ptr::slice_from_raw_parts_mut(self.virt_alloc.as_ptr(), self.len);
+        let mem_slice = ptr::slice_from_raw_parts_mut(self.virt_alloc.as_ptr(), self.len.get());
         Zeroize::zeroize(unsafe { &mut (*mem_slice) });
 
         unsafe {
-            VirtualUnlock(self.virt_alloc.as_ptr() as *mut _, self.len);
+            VirtualUnlock(self.virt_alloc.as_ptr() as *mut _, self.len.get());
             VirtualFree(self.virt_alloc.as_ptr() as *mut _, 0, MEM_RELEASE);
         }
     }

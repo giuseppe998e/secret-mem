@@ -1,5 +1,6 @@
 use core::{
     mem::ManuallyDrop,
+    num::NonZeroUsize,
     ptr::{self, NonNull},
 };
 use std::io;
@@ -16,7 +17,7 @@ use super::{SecretMemory, SecretMemoryMut};
 /// version for additional protection when modifications are no longer necessary.
 pub struct UnixSecretMemoryMut {
     mmap: NonNull<u8>,
-    len: usize,
+    len: NonZeroUsize,
 }
 
 impl SecretMemory for UnixSecretMemoryMut {}
@@ -73,37 +74,42 @@ impl SecretMemoryMut for UnixSecretMemoryMut {
         }
 
         let mmap = unsafe { NonNull::new_unchecked(mmap as *mut _) };
+        let len = unsafe { NonZeroUsize::new_unchecked(len) };
         Ok(Self { mmap, len })
     }
 }
 
 impl AsRef<[u8]> for UnixSecretMemoryMut {
     fn as_ref(&self) -> &[u8] {
-        let slice_ptr = ptr::slice_from_raw_parts(self.mmap.as_ptr(), self.len);
+        let slice_ptr = ptr::slice_from_raw_parts(self.mmap.as_ptr(), self.len.get());
         unsafe { &(*slice_ptr) }
     }
 }
 
 impl AsMut<[u8]> for UnixSecretMemoryMut {
     fn as_mut(&mut self) -> &mut [u8] {
-        let slice_ptr = ptr::slice_from_raw_parts_mut(self.mmap.as_ptr(), self.len);
+        let slice_ptr = ptr::slice_from_raw_parts_mut(self.mmap.as_ptr(), self.len.get());
         unsafe { &mut (*slice_ptr) }
     }
 }
 
 impl Drop for UnixSecretMemoryMut {
     fn drop(&mut self) {
-        let slice_ptr = ptr::slice_from_raw_parts_mut(self.mmap.as_ptr(), self.len);
+        let slice_ptr = ptr::slice_from_raw_parts_mut(self.mmap.as_ptr(), self.len.get());
         Zeroize::zeroize(unsafe { &mut (*slice_ptr) });
 
         unsafe {
             #[cfg(any(target_os = "freebsd", target_os = "dragonfly"))]
             libc::madvise(self.mmap.as_ptr() as *mut _, self.len, libc::MADV_CORE);
             #[cfg(not(any(target_os = "freebsd", target_os = "dragonfly")))]
-            libc::madvise(self.mmap.as_ptr() as *mut _, self.len, libc::MADV_DODUMP);
+            libc::madvise(
+                self.mmap.as_ptr() as *mut _,
+                self.len.get(),
+                libc::MADV_DODUMP,
+            );
 
-            libc::munlock(self.mmap.as_ptr() as *mut _, self.len);
-            libc::munmap(self.mmap.as_ptr() as *mut _, self.len);
+            libc::munlock(self.mmap.as_ptr() as *mut _, self.len.get());
+            libc::munmap(self.mmap.as_ptr() as *mut _, self.len.get());
         }
     }
 }
@@ -114,14 +120,14 @@ impl Drop for UnixSecretMemoryMut {
 /// Once converted from a mutable version, it allows only read access.
 pub struct UnixSecretMemory {
     mmap: NonNull<u8>,
-    len: usize,
+    len: NonZeroUsize,
 }
 
 impl SecretMemory for UnixSecretMemory {}
 
 impl AsRef<[u8]> for UnixSecretMemory {
     fn as_ref(&self) -> &[u8] {
-        let slice_ptr = ptr::slice_from_raw_parts(self.mmap.as_ptr(), self.len);
+        let slice_ptr = ptr::slice_from_raw_parts(self.mmap.as_ptr(), self.len.get());
         unsafe { &(*slice_ptr) }
     }
 }
@@ -138,7 +144,7 @@ impl TryFrom<UnixSecretMemoryMut> for UnixSecretMemory {
             }
         };
 
-        if unsafe { libc::mprotect(this.mmap.as_ptr() as *mut _, this.len, PROT_READ) } < 0 {
+        if unsafe { libc::mprotect(this.mmap.as_ptr() as *mut _, this.len.get(), PROT_READ) } < 0 {
             // Calls the ‘this’ destructor, freeing the mmap
             return Err(io::Error::last_os_error());
         }
@@ -149,18 +155,26 @@ impl TryFrom<UnixSecretMemoryMut> for UnixSecretMemory {
 
 impl Drop for UnixSecretMemory {
     fn drop(&mut self) {
-        unsafe { libc::mprotect(self.mmap.as_ptr() as *mut _, self.len, PROT_WRITE) };
-        let slice_ptr = ptr::slice_from_raw_parts_mut(self.mmap.as_ptr(), self.len);
+        unsafe { libc::mprotect(self.mmap.as_ptr() as *mut _, self.len.get(), PROT_WRITE) };
+        let slice_ptr = ptr::slice_from_raw_parts_mut(self.mmap.as_ptr(), self.len.get());
         Zeroize::zeroize(unsafe { &mut (*slice_ptr) });
 
         unsafe {
             #[cfg(any(target_os = "freebsd", target_os = "dragonfly"))]
-            libc::madvise(self.mmap.as_ptr() as *mut _, self.len, libc::MADV_CORE);
+            libc::madvise(
+                self.mmap.as_ptr() as *mut _,
+                self.len.get(),
+                libc::MADV_CORE,
+            );
             #[cfg(not(any(target_os = "freebsd", target_os = "dragonfly")))]
-            libc::madvise(self.mmap.as_ptr() as *mut _, self.len, libc::MADV_DODUMP);
+            libc::madvise(
+                self.mmap.as_ptr() as *mut _,
+                self.len.get(),
+                libc::MADV_DODUMP,
+            );
 
-            libc::munlock(self.mmap.as_ptr() as *mut _, self.len);
-            libc::munmap(self.mmap.as_ptr() as *mut _, self.len);
+            libc::munlock(self.mmap.as_ptr() as *mut _, self.len.get());
+            libc::munmap(self.mmap.as_ptr() as *mut _, self.len.get());
         }
     }
 }
