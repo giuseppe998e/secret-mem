@@ -25,7 +25,7 @@ impl SecretMemory for UnixSecretMemoryMut {}
 impl SecretMemoryMut for UnixSecretMemoryMut {
     type ReadOnly = UnixSecretMemory;
 
-    fn with_length(len: usize) -> std::io::Result<Self> {
+    fn with_length(len: usize) -> io::Result<Self> {
         if !(len > 0 && len <= isize::MAX as usize) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
