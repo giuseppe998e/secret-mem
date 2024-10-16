@@ -1,7 +1,10 @@
 [package]
 name = "secret_mem"
+description = "Rust library for securely managing sensitive data in memory."
 version = "0.1.0"
 authors = ["Giuseppe Eletto <giuseppe@eletto.me>"]
+repository = "https://github.com/giuseppe998e/secret-mem"
+license = "MIT OR Apache-2.0"
 rust-version = "1.70"
 edition = "2021"
 
