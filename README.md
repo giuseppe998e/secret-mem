@@ -12,7 +12,7 @@ and `VirtualAlloc` to provide memory protections, including:
 - Preventing memory from being swapped to disk.
 - Restricting read/write access to allocated memory regions.
 - Ensuring memory is excluded from core dumps.
-  <br>
+<br>
 
 **Important: This project is still under development and is currently non-functional!**
 
@@ -59,14 +59,14 @@ but they lack proper implementation and memory management features at this time.
 The library will use unsafe code internally to interact with system memory management functions.
 Handle your sensitive data with extreme care.
 
-### License
+## License
 
 This project is licensed under either of the following licenses, at your option:
 
 - Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
 - MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
 
-### Contribution
+## Contribution
 
 Unless you explicitly state otherwise, any contribution intentionally submitted
 for inclusion in the work by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any
