@@ -2,6 +2,7 @@
 name = "secret_mem"
 version = "0.1.0"
 authors = ["Giuseppe Eletto <giuseppe@eletto.me>"]
+rust-version = "1.70"
 edition = "2021"
 
 [dependencies]
@@ -11,4 +12,7 @@ zeroize = "1.8"
 libc = "0.2"
 
 [target.'cfg(target_family = "windows")'.dependencies]
-windows-sys = { version = "0.59", features = ["Win32_System_Memory"] }
+windows-sys = { version = "0.59", features = [
+    "Win32_System_Memory",
+    "Win32_System_SystemInformation",
+] }
