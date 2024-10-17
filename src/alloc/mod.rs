@@ -70,7 +70,21 @@ pub trait SecretAllocator {
 }
 
 mod util {
-    use std::sync::OnceLock;
+    use std::{alloc::Layout, cmp, sync::OnceLock};
+
+    /// Returns the size of a memory layout aligned to the system's page size.
+    ///
+    /// # Arguments
+    /// * `layout` - A memory layout specifying size and alignment.
+    ///
+    /// # Panics
+    /// This function panics if alignment fails (which should not happen,
+    /// as alignment to the page size is expected to succeed).
+    pub fn aligned_layout_size(layout: &Layout) -> usize {
+        let size = layout.size();
+        let align = cmp::max(layout.align(), self::page_size());
+        size.wrapping_add(align).wrapping_sub(1) & !align.wrapping_sub(1)
+    }
 
     /// Returns the system's memory page size in bytes.
     ///
