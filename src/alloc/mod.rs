@@ -25,7 +25,7 @@ pub trait SecretAllocator {
     /// - On success, returns a `NonNull<u8>` pointer to the beginning of the allocated
     ///   memory block.
     /// - On failure, returns an `io::Result` containing the error.
-    fn alloc(layout: Layout) -> io::Result<NonNull<u8>>;
+    fn alloc(&self, layout: Layout) -> io::Result<NonNull<u8>>;
 
     /// Changes the access permissions of a memory region to make it read-only.
     ///
@@ -38,7 +38,7 @@ pub trait SecretAllocator {
     ///
     /// # Returns:
     /// On success, returns `Ok(())`. On failure, returns an `io::Error`.
-    fn make_read_only(ptr: NonNull<u8>, layout: Layout) -> io::Result<()>;
+    fn make_read_only(&self, ptr: NonNull<u8>, layout: Layout) -> io::Result<()>;
 
     /// Changes the access permissions of a memory region to make it writable.
     ///
@@ -52,7 +52,7 @@ pub trait SecretAllocator {
     ///
     /// # Returns:
     /// On success, returns `Ok(())`. On failure, returns an `io::Error`.
-    fn make_writable(ptr: NonNull<u8>, layout: Layout) -> io::Result<()>;
+    fn make_writable(&self, ptr: NonNull<u8>, layout: Layout) -> io::Result<()>;
 
     /// Deallocates a previously allocated memory region.
     ///
@@ -66,7 +66,7 @@ pub trait SecretAllocator {
     ///
     /// # Returns:
     /// On success, returns `Ok(())`. On failure, returns an `io::Error`.
-    fn dealloc(ptr: NonNull<u8>, layout: Layout) -> io::Result<()>;
+    fn dealloc(&self, ptr: NonNull<u8>, layout: Layout) -> io::Result<()>;
 }
 
 mod util {
