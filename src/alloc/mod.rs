@@ -1,8 +1,19 @@
 use core::{alloc::Layout, ptr::NonNull};
-use std::io;
+use std::{io, sync::OnceLock};
 
-pub mod unix;
-pub mod windows;
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(target_family = "unix")]
+mod unix;
+#[cfg(target_family = "windows")]
+mod windows;
+
+#[cfg(target_os = "linux")]
+pub use self::linux::LinuxSecretAllocator;
+#[cfg(target_family = "unix")]
+pub use self::unix::UnixSecretAllocator;
+#[cfg(target_family = "windows")]
+pub use self::windows::WindowsSecretAllocator;
 
 /// Trait provides an interface for working with memory that should remain protected
 /// and as invisible as possible. The primary goal is to prevent sensitive data
@@ -13,7 +24,7 @@ pub mod windows;
 /// Implementations of this trait ensure that memory regions are allocated with
 /// appropriate permissions (e.g., read-only or writable), and that deallocated memory
 /// is securely handled to minimize the risk of sensitive information being leaked.
-pub trait SecretAllocator {
+pub trait SecretAllocator: Send + Sync {
     /// Allocates a memory region, according to the specified `layout`, which is
     /// intended to store sensitive data.
     ///
@@ -25,7 +36,7 @@ pub trait SecretAllocator {
     /// - On success, returns a `NonNull<u8>` pointer to the beginning of the allocated
     ///   memory block.
     /// - On failure, returns an `io::Result` containing the error.
-    fn alloc(layout: Layout) -> io::Result<NonNull<u8>>;
+    fn alloc(&self, layout: Layout) -> io::Result<NonNull<u8>>;
 
     /// Changes the access permissions of a memory region to make it read-only.
     ///
@@ -38,7 +49,7 @@ pub trait SecretAllocator {
     ///
     /// # Returns:
     /// On success, returns `Ok(())`. On failure, returns an `io::Error`.
-    fn make_read_only(ptr: NonNull<u8>, layout: Layout) -> io::Result<()>;
+    fn make_read_only(&self, ptr: NonNull<u8>, layout: Layout) -> io::Result<()>;
 
     /// Changes the access permissions of a memory region to make it writable.
     ///
@@ -52,7 +63,7 @@ pub trait SecretAllocator {
     ///
     /// # Returns:
     /// On success, returns `Ok(())`. On failure, returns an `io::Error`.
-    fn make_writable(ptr: NonNull<u8>, layout: Layout) -> io::Result<()>;
+    fn make_writable(&self, ptr: NonNull<u8>, layout: Layout) -> io::Result<()>;
 
     /// Deallocates a previously allocated memory region.
     ///
@@ -66,11 +77,57 @@ pub trait SecretAllocator {
     ///
     /// # Returns:
     /// On success, returns `Ok(())`. On failure, returns an `io::Error`.
-    fn dealloc(ptr: NonNull<u8>, layout: Layout) -> io::Result<()>;
+    fn dealloc(&self, ptr: NonNull<u8>, layout: Layout) -> io::Result<()>;
+}
+
+/// Returns a reference to the global instance of the platform-specific
+/// secret memory allocator.
+///
+/// # Platform-specific behavior
+/// - **Unix**: Checks if `memfd_secret` is supported.
+///   If not available, it falls back to a more general Unix allocator.
+/// - **Windows**: Initializes the general Windows allocator.
+pub fn platform_secret_allocator() -> &'static dyn SecretAllocator {
+    static INSTANCE: OnceLock<Box<dyn SecretAllocator>> = OnceLock::new();
+    INSTANCE
+        .get_or_init(|| {
+            #[cfg(target_os = "linux")]
+            {
+                match unsafe { libc::syscall(libc::SYS_memfd_secret, 0) } {
+                    -1 => Box::new(UnixSecretAllocator::new()),
+                    fd => {
+                        unsafe { libc::close(fd as libc::c_int) };
+                        Box::new(LinuxSecretAllocator::new())
+                    }
+                }
+            }
+
+            #[cfg(all(target_family = "unix", not(target_os = "linux")))]
+            {
+                Box::new(UnixSecretAllocator::new())
+            }
+
+            #[cfg(target_family = "windows")]
+            {
+                Box::new(windows::WindowsSecretAllocator::new())
+            }
+        })
+        .as_ref()
 }
 
 mod util {
+    use core::{alloc::Layout, cmp};
     use std::sync::OnceLock;
+
+    /// Returns the size of a memory layout aligned to the system's page size.
+    ///
+    /// # Arguments
+    /// * `layout` - A memory layout specifying size and alignment.
+    pub fn aligned_layout_size(layout: &Layout) -> usize {
+        let size = layout.size();
+        let align = cmp::max(layout.align(), self::page_size());
+        size.wrapping_add(align).wrapping_sub(1) & !align.wrapping_sub(1)
+    }
 
     /// Returns the system's memory page size in bytes.
     ///
@@ -112,5 +169,36 @@ mod util {
                 sys_info.dwPageSize as usize
             }
         })
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use core::alloc::Layout;
+
+        use super::*;
+
+        #[test]
+        fn test_aligned_layout_size_with_page_size() {
+            let page_size = page_size();
+
+            // Layout with size less than page size, aligned to page size
+            let layout = Layout::from_size_align(1000, 8).unwrap();
+            let aligned_size = aligned_layout_size(&layout);
+            assert_eq!(aligned_size, page_size);
+
+            // Layout with size larger than a page size
+            let layout = Layout::from_size_align(page_size + 1, 8).unwrap();
+            let aligned_size = aligned_layout_size(&layout);
+            assert_eq!(aligned_size, page_size * 2);
+        }
+
+        #[test]
+        fn test_page_size() {
+            let page_size = page_size();
+
+            // Assert that the page size is greater than 0 and a common power of two (e.g., 4096, 8192)
+            assert!(page_size > 0);
+            assert!(page_size.is_power_of_two());
+        }
     }
 }
