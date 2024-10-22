@@ -61,30 +61,26 @@ impl SecretAllocator for UnixSecretAllocator {
             return Err(io::Error::last_os_error());
         }
 
-        let mmap = unsafe { NonNull::new_unchecked(mmap as *mut _) };
-        Ok(mmap)
+        let ptr = unsafe { NonNull::new_unchecked(mmap as *mut _) };
+        Ok(ptr)
     }
 
     // NOTE Protection acts on an entire page, not a section.
     fn make_read_only(&self, ptr: NonNull<u8>, layout: Layout) -> io::Result<()> {
         let size = util::aligned_layout_size(&layout);
-
-        if unsafe { libc::mprotect(ptr.as_ptr() as *mut _, size, PROT_READ) } < 0 {
-            return Err(io::Error::last_os_error());
+        match unsafe { libc::mprotect(ptr.as_ptr() as *mut _, size, PROT_READ) } {
+            -1 => Err(io::Error::last_os_error()),
+            _ => Ok(()),
         }
-
-        Ok(())
     }
 
     // NOTE Protection acts on an entire page, not a section.
     fn make_writable(&self, ptr: NonNull<u8>, layout: Layout) -> io::Result<()> {
         let size = util::aligned_layout_size(&layout);
-
-        if unsafe { libc::mprotect(ptr.as_ptr() as *mut _, size, PROT_WRITE | PROT_READ) } < 0 {
-            return Err(io::Error::last_os_error());
+        match unsafe { libc::mprotect(ptr.as_ptr() as *mut _, size, PROT_WRITE | PROT_READ) } {
+            -1 => Err(io::Error::last_os_error()),
+            _ => Ok(()),
         }
-
-        Ok(())
     }
 
     fn dealloc(&self, ptr: NonNull<u8>, layout: Layout) -> io::Result<()> {
@@ -96,6 +92,7 @@ impl SecretAllocator for UnixSecretAllocator {
             unsafe { &mut *bytes_slice }
         });
 
+        // May fail (unchecked)
         unsafe {
             #[cfg(any(target_os = "freebsd", target_os = "dragonfly"))]
             libc::madvise(ptr.as_ptr() as *mut _, self.len, libc::MADV_CORE);
@@ -103,9 +100,11 @@ impl SecretAllocator for UnixSecretAllocator {
             libc::madvise(ptr.as_ptr() as *mut _, size, libc::MADV_DODUMP);
 
             libc::munlock(ptr.as_ptr() as *mut _, size);
-            libc::munmap(ptr.as_ptr() as *mut _, size);
         }
 
-        Ok(())
+        match unsafe { libc::munmap(ptr.as_ptr() as *mut _, size) } {
+            -1 => Err(io::Error::last_os_error()),
+            _ => Ok(()),
+        }
     }
 }
