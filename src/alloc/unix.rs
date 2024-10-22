@@ -47,16 +47,10 @@ impl SecretAllocator for UnixSecretAllocator {
             return Err(io::Error::last_os_error());
         }
 
-        let madvise_result = unsafe {
-            #[cfg(any(target_os = "freebsd", target_os = "dragonfly"))]
-            {
-                libc::madvise(mmap, size, libc::MADV_NOCORE)
-            }
-            #[cfg(not(any(target_os = "freebsd", target_os = "dragonfly")))]
-            {
-                libc::madvise(mmap, size, libc::MADV_DONTDUMP)
-            }
-        };
+        #[cfg(any(target_os = "freebsd", target_os = "dragonfly"))]
+        let madvise_result = unsafe { libc::madvise(mmap, size, libc::MADV_NOCORE) };
+        #[cfg(not(any(target_os = "freebsd", target_os = "dragonfly")))]
+        let madvise_result = unsafe { libc::madvise(mmap, size, libc::MADV_DONTDUMP) };
 
         if madvise_result < 0 {
             unsafe {
