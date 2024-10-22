@@ -12,7 +12,7 @@ use super::SecretAllocator;
 pub struct WindowsSecretAllocator(());
 
 impl WindowsSecretAllocator {
-    pub fn instance() -> Self {
+    pub fn new() -> Self {
         Self(())
     }
 }

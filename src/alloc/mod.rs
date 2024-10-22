@@ -1,8 +1,47 @@
 use core::{alloc::Layout, ptr::NonNull};
-use std::io;
+use std::{io, sync::OnceLock};
 
-pub mod unix;
-pub mod windows;
+#[cfg(target_family = "unix")]
+mod linux;
+#[cfg(target_family = "unix")]
+mod unix;
+#[cfg(target_family = "unix")]
+pub use self::{linux::LinuxSecretAllocator, unix::UnixSecretAllocator};
+
+#[cfg(target_family = "windows")]
+mod windows;
+#[cfg(target_family = "windows")]
+pub use self::windows::WindowsSecretAllocator;
+
+/// Returns a reference to the global instance of the platform-specific
+/// secret memory allocator.
+///
+/// # Platform-specific behavior
+/// - **Unix**: Checks if `memfd_secret` is supported.
+///   If not available, it falls back to a more general Unix allocator.
+/// - **Windows**: Initializes the general Windows allocator.
+pub fn platform_secret_allocator() -> &'static dyn SecretAllocator {
+    static INSTANCE: OnceLock<Box<dyn SecretAllocator>> = OnceLock::new();
+    INSTANCE
+        .get_or_init(|| {
+            #[cfg(target_family = "unix")]
+            {
+                match unsafe { libc::syscall(libc::SYS_memfd_secret, 0) } {
+                    -1 => Box::new(UnixSecretAllocator::new()),
+                    fd => {
+                        unsafe { libc::close(fd as libc::c_int) };
+                        Box::new(LinuxSecretAllocator::new())
+                    }
+                }
+            }
+
+            #[cfg(target_family = "windows")]
+            {
+                Box::new(windows::WindowsSecretAllocator::new())
+            }
+        })
+        .as_ref()
+}
 
 /// Trait provides an interface for working with memory that should remain protected
 /// and as invisible as possible. The primary goal is to prevent sensitive data
@@ -13,7 +52,7 @@ pub mod windows;
 /// Implementations of this trait ensure that memory regions are allocated with
 /// appropriate permissions (e.g., read-only or writable), and that deallocated memory
 /// is securely handled to minimize the risk of sensitive information being leaked.
-pub trait SecretAllocator {
+pub trait SecretAllocator: Send + Sync {
     /// Allocates a memory region, according to the specified `layout`, which is
     /// intended to store sensitive data.
     ///
@@ -76,10 +115,6 @@ mod util {
     ///
     /// # Arguments
     /// * `layout` - A memory layout specifying size and alignment.
-    ///
-    /// # Panics
-    /// This function panics if alignment fails (which should not happen,
-    /// as alignment to the page size is expected to succeed).
     pub fn aligned_layout_size(layout: &Layout) -> usize {
         let size = layout.size();
         let align = cmp::max(layout.align(), self::page_size());
