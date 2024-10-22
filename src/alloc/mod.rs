@@ -1,15 +1,17 @@
 use core::{alloc::Layout, ptr::NonNull};
 use std::{io, sync::OnceLock};
 
-#[cfg(target_family = "unix")]
+#[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_family = "unix")]
 mod unix;
-#[cfg(target_family = "unix")]
-pub use self::{linux::LinuxSecretAllocator, unix::UnixSecretAllocator};
-
 #[cfg(target_family = "windows")]
 mod windows;
+
+#[cfg(target_os = "linux")]
+pub use self::linux::LinuxSecretAllocator;
+#[cfg(target_family = "unix")]
+pub use self::unix::UnixSecretAllocator;
 #[cfg(target_family = "windows")]
 pub use self::windows::WindowsSecretAllocator;
 
@@ -89,7 +91,7 @@ pub fn platform_secret_allocator() -> &'static dyn SecretAllocator {
     static INSTANCE: OnceLock<Box<dyn SecretAllocator>> = OnceLock::new();
     INSTANCE
         .get_or_init(|| {
-            #[cfg(target_family = "unix")]
+            #[cfg(target_os = "linux")]
             {
                 match unsafe { libc::syscall(libc::SYS_memfd_secret, 0) } {
                     -1 => Box::new(UnixSecretAllocator::new()),
@@ -98,6 +100,11 @@ pub fn platform_secret_allocator() -> &'static dyn SecretAllocator {
                         Box::new(LinuxSecretAllocator::new())
                     }
                 }
+            }
+
+            #[cfg(all(target_family = "unix", not(target_os = "linux")))]
+            {
+                Box::new(UnixSecretAllocator::new())
             }
 
             #[cfg(target_family = "windows")]
