@@ -109,7 +109,7 @@ pub fn platform_secret_allocator() -> &'static dyn SecretAllocator {
 
             #[cfg(target_family = "windows")]
             {
-                Box::new(windows::WindowsSecretAllocator::new())
+                Box::new(WindowsSecretAllocator::new())
             }
         })
         .as_ref()
