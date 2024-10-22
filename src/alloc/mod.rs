@@ -13,36 +13,6 @@ mod windows;
 #[cfg(target_family = "windows")]
 pub use self::windows::WindowsSecretAllocator;
 
-/// Returns a reference to the global instance of the platform-specific
-/// secret memory allocator.
-///
-/// # Platform-specific behavior
-/// - **Unix**: Checks if `memfd_secret` is supported.
-///   If not available, it falls back to a more general Unix allocator.
-/// - **Windows**: Initializes the general Windows allocator.
-pub fn platform_secret_allocator() -> &'static dyn SecretAllocator {
-    static INSTANCE: OnceLock<Box<dyn SecretAllocator>> = OnceLock::new();
-    INSTANCE
-        .get_or_init(|| {
-            #[cfg(target_family = "unix")]
-            {
-                match unsafe { libc::syscall(libc::SYS_memfd_secret, 0) } {
-                    -1 => Box::new(UnixSecretAllocator::new()),
-                    fd => {
-                        unsafe { libc::close(fd as libc::c_int) };
-                        Box::new(LinuxSecretAllocator::new())
-                    }
-                }
-            }
-
-            #[cfg(target_family = "windows")]
-            {
-                Box::new(windows::WindowsSecretAllocator::new())
-            }
-        })
-        .as_ref()
-}
-
 /// Trait provides an interface for working with memory that should remain protected
 /// and as invisible as possible. The primary goal is to prevent sensitive data
 /// from being exposed to unintended processes or users by leveraging OS-specific
@@ -106,6 +76,36 @@ pub trait SecretAllocator: Send + Sync {
     /// # Returns:
     /// On success, returns `Ok(())`. On failure, returns an `io::Error`.
     fn dealloc(&self, ptr: NonNull<u8>, layout: Layout) -> io::Result<()>;
+}
+
+/// Returns a reference to the global instance of the platform-specific
+/// secret memory allocator.
+///
+/// # Platform-specific behavior
+/// - **Unix**: Checks if `memfd_secret` is supported.
+///   If not available, it falls back to a more general Unix allocator.
+/// - **Windows**: Initializes the general Windows allocator.
+pub fn platform_secret_allocator() -> &'static dyn SecretAllocator {
+    static INSTANCE: OnceLock<Box<dyn SecretAllocator>> = OnceLock::new();
+    INSTANCE
+        .get_or_init(|| {
+            #[cfg(target_family = "unix")]
+            {
+                match unsafe { libc::syscall(libc::SYS_memfd_secret, 0) } {
+                    -1 => Box::new(UnixSecretAllocator::new()),
+                    fd => {
+                        unsafe { libc::close(fd as libc::c_int) };
+                        Box::new(LinuxSecretAllocator::new())
+                    }
+                }
+            }
+
+            #[cfg(target_family = "windows")]
+            {
+                Box::new(windows::WindowsSecretAllocator::new())
+            }
+        })
+        .as_ref()
 }
 
 mod util {
