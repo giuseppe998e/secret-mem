@@ -27,37 +27,32 @@ impl SecretAllocator for LinuxSecretAllocator {
     fn alloc(&self, layout: Layout) -> io::Result<NonNull<u8>> {
         let size = util::aligned_layout_size(&layout);
 
-        let mmap = match unsafe { libc::syscall(SYS_memfd_secret, 0) } as libc::c_int {
+        let fd = match unsafe { libc::syscall(SYS_memfd_secret, 0) } {
             -1 => return Err(io::Error::last_os_error()),
-            fd => {
-                if unsafe { libc::ftruncate(fd, size as libc::off_t) } < 0 {
-                    unsafe { libc::close(fd) };
-                    return Err(io::Error::last_os_error());
-                }
-
-                let mmap = unsafe {
-                    libc::mmap(
-                        ptr::null_mut(),
-                        size,
-                        PROT_WRITE | PROT_READ,
-                        MAP_SHARED,
-                        fd,
-                        0,
-                    )
-                };
-
-                unsafe { libc::close(fd) };
-                mmap
-            }
+            fd => fd as libc::c_int,
         };
 
-        match mmap {
+        let mmap = unsafe {
+            libc::mmap(
+                ptr::null_mut(),
+                size,
+                PROT_WRITE | PROT_READ,
+                MAP_SHARED,
+                fd,
+                0,
+            )
+        };
+
+        let result = match mmap {
             MAP_FAILED => Err(io::Error::last_os_error()),
             ptr => {
                 let ptr = unsafe { NonNull::new_unchecked(ptr as *mut _) };
                 Ok(ptr)
             }
-        }
+        };
+
+        unsafe { libc::close(fd) };
+        result
     }
 
     // NOTE Protection acts on an entire page, not a section.

@@ -43,8 +43,9 @@ impl SecretAllocator for UnixSecretAllocator {
         }
 
         if unsafe { libc::mlock(mmap, size) } < 0 {
+            let last_os_error = io::Error::last_os_error();
             unsafe { libc::munmap(mmap, size) };
-            return Err(io::Error::last_os_error());
+            return Err(last_os_error);
         }
 
         #[cfg(any(target_os = "freebsd", target_os = "dragonfly"))]
@@ -53,12 +54,14 @@ impl SecretAllocator for UnixSecretAllocator {
         let madvise_result = unsafe { libc::madvise(mmap, size, libc::MADV_DONTDUMP) };
 
         if madvise_result < 0 {
+            let last_os_error = io::Error::last_os_error();
+
             unsafe {
                 libc::munlock(mmap, size);
                 libc::munmap(mmap, size);
             }
 
-            return Err(io::Error::last_os_error());
+            return Err(last_os_error);
         }
 
         let ptr = unsafe { NonNull::new_unchecked(mmap as *mut _) };
