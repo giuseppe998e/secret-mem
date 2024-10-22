@@ -109,7 +109,8 @@ pub fn platform_secret_allocator() -> &'static dyn SecretAllocator {
 }
 
 mod util {
-    use std::{alloc::Layout, cmp, sync::OnceLock};
+    use core::{alloc::Layout, cmp};
+    use std::sync::OnceLock;
 
     /// Returns the size of a memory layout aligned to the system's page size.
     ///
