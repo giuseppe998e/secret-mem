@@ -170,4 +170,35 @@ mod util {
             }
         })
     }
+
+    #[cfg(test)]
+    mod tests {
+        use core::alloc::Layout;
+
+        use super::*;
+
+        #[test]
+        fn test_aligned_layout_size_with_page_size() {
+            let page_size = page_size();
+
+            // Layout with size less than page size, aligned to page size
+            let layout = Layout::from_size_align(1000, 8).unwrap();
+            let aligned_size = aligned_layout_size(&layout);
+            assert_eq!(aligned_size, page_size);
+
+            // Layout with size larger than a page size
+            let layout = Layout::from_size_align(page_size + 1, 8).unwrap();
+            let aligned_size = aligned_layout_size(&layout);
+            assert_eq!(aligned_size, page_size * 2);
+        }
+
+        #[test]
+        fn test_page_size() {
+            let page_size = page_size();
+
+            // Assert that the page size is greater than 0 and a common power of two (e.g., 4096, 8192)
+            assert!(page_size > 0);
+            assert!(page_size.is_power_of_two());
+        }
+    }
 }

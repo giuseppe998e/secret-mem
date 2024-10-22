@@ -105,3 +105,48 @@ impl SecretAllocator for WindowsSecretAllocator {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use core::{alloc::Layout, ptr, str};
+    use std::io::Write as _;
+
+    use super::*;
+
+    #[test]
+    fn test_windows_implementation() {
+        let allocator = WindowsSecretAllocator::new();
+        let layout = unsafe { Layout::from_size_align_unchecked(1024, 8) }; // Allocate 1KB with 8-byte alignment
+
+        let ptr = {
+            // Assert that allocation was successful
+            let result = allocator.alloc(layout);
+            assert!(result.is_ok());
+
+            unsafe { result.unwrap_unchecked() }
+        };
+
+        // Attempt to write into the allocation
+        let result = {
+            let mut slice_mut =
+                unsafe { &mut *ptr::slice_from_raw_parts_mut(ptr.as_ptr(), layout.size()) };
+            write!(slice_mut, "Hello, World!")
+        };
+        assert!(result.is_ok());
+
+        // Assert that make_readonly was successful
+        let result = allocator.make_read_only(ptr, layout);
+        assert!(result.is_ok());
+
+        // Attempt to read from the allocation
+        let result = {
+            let slice_mut = unsafe { &*ptr::slice_from_raw_parts(ptr.as_ptr(), layout.size()) };
+            str::from_utf8(slice_mut)
+        };
+        assert!(result.is_ok_and(|s| &s[..13] == "Hello, World!"));
+
+        // Assert that deallocation was successful
+        let result = allocator.dealloc(ptr, layout);
+        assert!(result.is_ok());
+    }
+}
