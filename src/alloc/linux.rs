@@ -26,7 +26,10 @@ impl SecretAllocator for LinuxSecretAllocator {
 
         let fd = match unsafe { libc::syscall(SYS_memfd_secret, 0) } {
             -1 => return Err(io::Error::last_os_error()),
-            fd => fd as libc::c_int,
+            fd => {
+                unsafe { libc::ftruncate(fd as libc::c_int, size as libc::c_long) };
+                fd as libc::c_int
+            }
         };
 
         let mmap = unsafe {
