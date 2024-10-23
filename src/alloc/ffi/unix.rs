@@ -40,7 +40,7 @@ pub fn memfd_secret_available() -> bool {
     match unsafe { libc::syscall(libc::SYS_memfd_secret, 0) } {
         -1 => {
             let last_os_error = io::Error::last_os_error();
-            last_os_error.kind() == io::ErrorKind::Unsupported
+            last_os_error.kind() != io::ErrorKind::Unsupported
         }
         fd => {
             unsafe { libc::close(fd as i32) };
