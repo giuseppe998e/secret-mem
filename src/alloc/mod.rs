@@ -2,6 +2,7 @@ use core::alloc::Layout;
 use std::{io, sync::OnceLock};
 
 mod ffi;
+
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_family = "unix")]

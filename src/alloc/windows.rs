@@ -7,7 +7,7 @@ use windows_sys::Win32::System::Memory::{
 };
 use zeroize::Zeroize;
 
-use super::{util, SecretAllocator};
+use super::{util::AlignedSize as _, SecretAllocator};
 
 // FIXME Current implementation wastes memory
 /// Provides an implementation of the `SecretAllocator` trait for Windows systems.
@@ -25,7 +25,7 @@ impl WindowsSecretAllocator {
 
 impl SecretAllocator for WindowsSecretAllocator {
     fn alloc(&self, layout: Layout) -> io::Result<*mut u8> {
-        let size = util::aligned_layout_size(&layout);
+        let size = layout.page_aligned_size();
 
         let virt_alloc = unsafe {
             windows::VirtualAlloc(
@@ -51,7 +51,7 @@ impl SecretAllocator for WindowsSecretAllocator {
 
     // NOTE Protection acts on an entire page, not a section.
     fn make_read_only(&self, ptr: *mut u8, layout: Layout) -> io::Result<()> {
-        let size = util::aligned_layout_size(&layout);
+        let size = layout.page_aligned_size();
         let prot_result = unsafe {
             windows::VirtualProtect(ptr as _, size, PAGE_READONLY, (&mut 0u32) as *mut _)
         };
@@ -64,7 +64,7 @@ impl SecretAllocator for WindowsSecretAllocator {
 
     // NOTE Protection acts on an entire page, not a section.
     fn make_writable(&self, ptr: *mut u8, layout: Layout) -> io::Result<()> {
-        let size = util::aligned_layout_size(&layout);
+        let size = layout.page_aligned_size();
         let prot_result = unsafe {
             windows::VirtualProtect(ptr as _, size, PAGE_READWRITE, (&mut 0u32) as *mut _)
         };
@@ -77,7 +77,7 @@ impl SecretAllocator for WindowsSecretAllocator {
 
     fn dealloc(&self, ptr: *mut u8, layout: Layout) -> io::Result<()> {
         self.make_writable(ptr, layout)?;
-        let size = util::aligned_layout_size(&layout);
+        let size = layout.page_aligned_size();
 
         Zeroize::zeroize({
             let bytes_slice = ptr::slice_from_raw_parts_mut(ptr, size);
