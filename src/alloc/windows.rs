@@ -1,7 +1,4 @@
-use core::{
-    alloc::Layout,
-    ptr::{self, NonNull},
-};
+use core::{alloc::Layout, ptr};
 use std::io;
 
 use windows_sys::Win32::System::Memory::{
@@ -27,7 +24,7 @@ impl WindowsSecretAllocator {
 }
 
 impl SecretAllocator for WindowsSecretAllocator {
-    fn alloc(&self, layout: Layout) -> io::Result<NonNull<u8>> {
+    fn alloc(&self, layout: Layout) -> io::Result<*mut u8> {
         let size = util::aligned_layout_size(&layout);
 
         let virt_alloc = unsafe {
@@ -49,20 +46,14 @@ impl SecretAllocator for WindowsSecretAllocator {
             return Err(last_error);
         }
 
-        let ptr = unsafe { NonNull::new_unchecked(virt_alloc as *mut _) };
-        Ok(ptr)
+        Ok(virt_alloc as _)
     }
 
     // NOTE Protection acts on an entire page, not a section.
-    fn make_read_only(&self, ptr: NonNull<u8>, layout: Layout) -> io::Result<()> {
+    fn make_read_only(&self, ptr: *mut u8, layout: Layout) -> io::Result<()> {
         let size = util::aligned_layout_size(&layout);
         let prot_result = unsafe {
-            windows::VirtualProtect(
-                ptr.as_ptr() as *mut _,
-                size,
-                PAGE_READONLY,
-                (&mut 0u32) as *mut _,
-            )
+            windows::VirtualProtect(ptr as _, size, PAGE_READONLY, (&mut 0u32) as *mut _)
         };
 
         match prot_result {
@@ -72,15 +63,10 @@ impl SecretAllocator for WindowsSecretAllocator {
     }
 
     // NOTE Protection acts on an entire page, not a section.
-    fn make_writable(&self, ptr: NonNull<u8>, layout: Layout) -> io::Result<()> {
+    fn make_writable(&self, ptr: *mut u8, layout: Layout) -> io::Result<()> {
         let size = util::aligned_layout_size(&layout);
         let prot_result = unsafe {
-            windows::VirtualProtect(
-                ptr.as_ptr() as *mut _,
-                size,
-                PAGE_READWRITE,
-                (&mut 0u32) as *mut _,
-            )
+            windows::VirtualProtect(ptr as _, size, PAGE_READWRITE, (&mut 0u32) as *mut _)
         };
 
         match prot_result {
@@ -89,17 +75,17 @@ impl SecretAllocator for WindowsSecretAllocator {
         }
     }
 
-    fn dealloc(&self, ptr: NonNull<u8>, layout: Layout) -> io::Result<()> {
+    fn dealloc(&self, ptr: *mut u8, layout: Layout) -> io::Result<()> {
         self.make_writable(ptr, layout)?;
         let size = util::aligned_layout_size(&layout);
 
         Zeroize::zeroize({
-            let bytes_slice = ptr::slice_from_raw_parts_mut(ptr.as_ptr(), size);
+            let bytes_slice = ptr::slice_from_raw_parts_mut(ptr, size);
             unsafe { &mut *bytes_slice }
         });
 
-        unsafe { windows::VirtualUnlock(ptr.as_ptr() as *mut _, size) };
-        match unsafe { windows::VirtualFree(ptr.as_ptr() as *mut _, 0, MEM_RELEASE) } {
+        unsafe { windows::VirtualUnlock(ptr as _, size) };
+        match unsafe { windows::VirtualFree(ptr as _, 0, MEM_RELEASE) } {
             0 => Err(io::Error::last_os_error()),
             _ => Ok(()),
         }

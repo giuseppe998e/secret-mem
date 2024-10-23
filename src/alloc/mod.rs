@@ -1,4 +1,4 @@
-use core::{alloc::Layout, ptr::NonNull};
+use core::alloc::Layout;
 use std::{io, sync::OnceLock};
 
 #[cfg(target_os = "linux")]
@@ -36,7 +36,7 @@ pub trait SecretAllocator: Send + Sync {
     /// - On success, returns a `NonNull<u8>` pointer to the beginning of the allocated
     ///   memory block.
     /// - On failure, returns an `io::Result` containing the error.
-    fn alloc(&self, layout: Layout) -> io::Result<NonNull<u8>>;
+    fn alloc(&self, layout: Layout) -> io::Result<*mut u8>;
 
     /// Changes the access permissions of a memory region to make it read-only.
     ///
@@ -49,7 +49,7 @@ pub trait SecretAllocator: Send + Sync {
     ///
     /// # Returns:
     /// On success, returns `Ok(())`. On failure, returns an `io::Error`.
-    fn make_read_only(&self, ptr: NonNull<u8>, layout: Layout) -> io::Result<()>;
+    fn make_read_only(&self, ptr: *mut u8, layout: Layout) -> io::Result<()>;
 
     /// Changes the access permissions of a memory region to make it writable.
     ///
@@ -63,7 +63,7 @@ pub trait SecretAllocator: Send + Sync {
     ///
     /// # Returns:
     /// On success, returns `Ok(())`. On failure, returns an `io::Error`.
-    fn make_writable(&self, ptr: NonNull<u8>, layout: Layout) -> io::Result<()>;
+    fn make_writable(&self, ptr: *mut u8, layout: Layout) -> io::Result<()>;
 
     /// Deallocates a previously allocated memory region.
     ///
@@ -77,7 +77,7 @@ pub trait SecretAllocator: Send + Sync {
     ///
     /// # Returns:
     /// On success, returns `Ok(())`. On failure, returns an `io::Error`.
-    fn dealloc(&self, ptr: NonNull<u8>, layout: Layout) -> io::Result<()>;
+    fn dealloc(&self, ptr: *mut u8, layout: Layout) -> io::Result<()>;
 }
 
 /// Returns a reference to the global instance of the platform-specific

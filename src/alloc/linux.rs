@@ -1,7 +1,4 @@
-use core::{
-    alloc::Layout,
-    ptr::{self, NonNull},
-};
+use core::{alloc::Layout, ptr};
 use std::io;
 
 use libc::{SYS_memfd_secret, MAP_FAILED, MAP_SHARED, PROT_READ, PROT_WRITE};
@@ -24,7 +21,7 @@ impl LinuxSecretAllocator {
 }
 
 impl SecretAllocator for LinuxSecretAllocator {
-    fn alloc(&self, layout: Layout) -> io::Result<NonNull<u8>> {
+    fn alloc(&self, layout: Layout) -> io::Result<*mut u8> {
         let size = util::aligned_layout_size(&layout);
 
         let fd = match unsafe { libc::syscall(SYS_memfd_secret, 0) } {
@@ -45,10 +42,7 @@ impl SecretAllocator for LinuxSecretAllocator {
 
         let result = match mmap {
             MAP_FAILED => Err(io::Error::last_os_error()),
-            ptr => {
-                let ptr = unsafe { NonNull::new_unchecked(ptr as *mut _) };
-                Ok(ptr)
-            }
+            ptr => Ok(ptr as _),
         };
 
         unsafe { libc::close(fd) };
@@ -56,33 +50,33 @@ impl SecretAllocator for LinuxSecretAllocator {
     }
 
     // NOTE Protection acts on an entire page, not a section.
-    fn make_read_only(&self, ptr: NonNull<u8>, layout: Layout) -> io::Result<()> {
+    fn make_read_only(&self, ptr: *mut u8, layout: Layout) -> io::Result<()> {
         let size = util::aligned_layout_size(&layout);
-        match unsafe { libc::mprotect(ptr.as_ptr() as *mut _, size, PROT_READ) } {
+        match unsafe { libc::mprotect(ptr as _, size, PROT_READ) } {
             -1 => Err(io::Error::last_os_error()),
             _ => Ok(()),
         }
     }
 
     // NOTE Protection acts on an entire page, not a section.
-    fn make_writable(&self, ptr: NonNull<u8>, layout: Layout) -> io::Result<()> {
+    fn make_writable(&self, ptr: *mut u8, layout: Layout) -> io::Result<()> {
         let size = util::aligned_layout_size(&layout);
-        match unsafe { libc::mprotect(ptr.as_ptr() as *mut _, size, PROT_WRITE | PROT_READ) } {
+        match unsafe { libc::mprotect(ptr as _, size, PROT_WRITE | PROT_READ) } {
             -1 => Err(io::Error::last_os_error()),
             _ => Ok(()),
         }
     }
 
-    fn dealloc(&self, ptr: NonNull<u8>, layout: Layout) -> io::Result<()> {
+    fn dealloc(&self, ptr: *mut u8, layout: Layout) -> io::Result<()> {
         self.make_writable(ptr, layout)?;
         let size = util::aligned_layout_size(&layout);
 
         Zeroize::zeroize({
-            let bytes_slice = ptr::slice_from_raw_parts_mut(ptr.as_ptr(), size);
+            let bytes_slice = ptr::slice_from_raw_parts_mut(ptr, size);
             unsafe { &mut *bytes_slice }
         });
 
-        match unsafe { libc::munmap(ptr.as_ptr() as *mut _, size) } {
+        match unsafe { libc::munmap(ptr as _, size) } {
             -1 => Err(io::Error::last_os_error()),
             _ => Ok(()),
         }
@@ -112,8 +106,7 @@ impl SecretAllocator for LinuxSecretAllocator {
 //
 //         // Attempt to write into the allocation
 //         let result = {
-//             let mut slice_mut =
-//                 unsafe { &mut *ptr::slice_from_raw_parts_mut(ptr.as_ptr(), layout.size()) };
+//             let mut slice_mut = unsafe { &mut *ptr::slice_from_raw_parts_mut(ptr, layout.size()) };
 //             write!(slice_mut, "Hello, World!")
 //         };
 //         assert!(result.is_ok());
@@ -124,7 +117,7 @@ impl SecretAllocator for LinuxSecretAllocator {
 //
 //         // Attempt to read from the allocation
 //         let result = {
-//             let slice_mut = unsafe { &*ptr::slice_from_raw_parts(ptr.as_ptr(), layout.size()) };
+//             let slice_mut = unsafe { &*ptr::slice_from_raw_parts(ptr, layout.size()) };
 //             str::from_utf8(slice_mut)
 //         };
 //         assert!(result.is_ok_and(|s| &s[..13] == "Hello, World!"));
