@@ -1,4 +1,4 @@
-//! # Secret Memory Management Library
+//! # Secret Memory
 //!
 //! This library provides a secure memory management solution for handling sensitive data
 //! such as cryptographic keys, passwords, and other confidential information. It leverages
