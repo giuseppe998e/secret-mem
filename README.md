@@ -50,7 +50,7 @@ but they lack proper implementation and memory management features at this time.
 
 - [x] Implement platform-specific memory allocation and protection features.
   + [ ] Improve memory management.
-- [ ] Complete functionality for `SecretBox`
+- [x] Partial ~Complete~ functionality for `SecretBox`.
 - [ ] Complete functionality for `SecretVec`.
 - [ ] Complete functionality for `SecretString`.
 - [ ] Add tests for memory safety.
