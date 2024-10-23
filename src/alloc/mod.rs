@@ -85,121 +85,48 @@ pub trait SecretAllocator: Send + Sync {
 /// secret memory allocator.
 ///
 /// # Platform-specific behavior
+///
 /// - **Unix**: Checks if `memfd_secret` is supported.
 ///   If not available, it falls back to a more general Unix allocator.
 /// - **Windows**: Initializes the general Windows allocator.
 pub fn platform_secret_allocator() -> &'static dyn SecretAllocator {
     static INSTANCE: OnceLock<Box<dyn SecretAllocator>> = OnceLock::new();
-    INSTANCE
-        .get_or_init(|| {
-            #[cfg(target_os = "linux")]
-            {
-                match unsafe { libc::syscall(libc::SYS_memfd_secret, 0) } {
-                    -1 => Box::new(UnixSecretAllocator::new()),
-                    fd => {
-                        unsafe { libc::close(fd as libc::c_int) };
-                        Box::new(LinuxSecretAllocator::new())
-                    }
-                }
-            }
 
-            #[cfg(all(target_family = "unix", not(target_os = "linux")))]
-            {
+    &**INSTANCE.get_or_init(|| {
+        #[cfg(target_os = "linux")]
+        {
+            if ffi::unix::memfd_secret_available() {
+                Box::new(LinuxSecretAllocator::new())
+            } else {
                 Box::new(UnixSecretAllocator::new())
             }
-
-            #[cfg(target_family = "windows")]
-            {
-                Box::new(WindowsSecretAllocator::new())
-            }
-        })
-        .as_ref()
+        }
+        #[cfg(all(target_family = "unix", not(target_os = "linux")))]
+        {
+            Box::new(UnixSecretAllocator::new())
+        }
+        #[cfg(target_family = "windows")]
+        {
+            Box::new(WindowsSecretAllocator::new())
+        }
+    })
 }
 
 mod util {
     use core::{alloc::Layout, cmp};
-    use std::sync::OnceLock;
 
-    /// Returns the size of a memory layout aligned to the system's page size.
-    ///
-    /// # Arguments
-    /// * `layout` - A memory layout specifying size and alignment.
-    pub fn aligned_layout_size(layout: &Layout) -> usize {
-        let size = layout.size();
-        let align = cmp::max(layout.align(), self::page_size());
-        size.wrapping_add(align).wrapping_sub(1) & !align.wrapping_sub(1)
+    use super::ffi;
+
+    pub trait AlignedSize {
+        /// Returns the size of a memory layout aligned to the system's page size.
+        fn page_aligned_size(&self) -> usize;
     }
 
-    /// Returns the system's memory page size in bytes.
-    ///
-    /// # Platform-specific behavior
-    /// - **Unix-based systems (Linux, macOS, etc.):**
-    ///   - On macOS, this function uses `libc::vm_page_size` to determine the page size.
-    ///   - On other Unix systems, it uses `libc::sysconf` to get the page size.
-    ///
-    /// - **Windows:** The function retrieves the page size by calling `GetSystemInfo`
-    ///   and extracting the `dwPageSize` field from the `SYSTEM_INFO` structure.
-    pub fn page_size() -> usize {
-        static PAGE_SIZE: OnceLock<usize> = OnceLock::new();
-
-        *PAGE_SIZE.get_or_init(|| {
-            #[cfg(target_family = "unix")]
-            {
-                #[cfg(target_os = "macos")]
-                unsafe {
-                    libc::vm_page_size as usize
-                }
-                #[cfg(not(target_os = "macos"))]
-                unsafe {
-                    libc::sysconf(libc::_SC_PAGESIZE) as usize
-                }
-            }
-            #[cfg(target_family = "windows")]
-            {
-                use std::mem::MaybeUninit;
-                use windows_sys::Win32::System::SystemInformation as Win32;
-
-                let sys_info = {
-                    let mut sys_info = MaybeUninit::<Win32::SYSTEM_INFO>::uninit();
-                    unsafe {
-                        Win32::GetSystemInfo(sys_info.as_mut_ptr());
-                        sys_info.assume_init()
-                    }
-                };
-
-                sys_info.dwPageSize as usize
-            }
-        })
-    }
-
-    #[cfg(test)]
-    mod tests {
-        use core::alloc::Layout;
-
-        use super::*;
-
-        #[test]
-        fn test_aligned_layout_size_with_page_size() {
-            let page_size = page_size();
-
-            // Layout with size less than page size, aligned to page size
-            let layout = Layout::from_size_align(1000, 8).unwrap();
-            let aligned_size = aligned_layout_size(&layout);
-            assert_eq!(aligned_size, page_size);
-
-            // Layout with size larger than a page size
-            let layout = Layout::from_size_align(page_size + 1, 8).unwrap();
-            let aligned_size = aligned_layout_size(&layout);
-            assert_eq!(aligned_size, page_size * 2);
-        }
-
-        #[test]
-        fn test_page_size() {
-            let page_size = page_size();
-
-            // Assert that the page size is greater than 0 and a common power of two (e.g., 4096, 8192)
-            assert!(page_size > 0);
-            assert!(page_size.is_power_of_two());
+    impl AlignedSize for Layout {
+        fn page_aligned_size(&self) -> usize {
+            let size = self.size();
+            let align = cmp::max(self.align(), ffi::page_size());
+            size.wrapping_add(align).wrapping_sub(1) & !align.wrapping_sub(1)
         }
     }
 }
